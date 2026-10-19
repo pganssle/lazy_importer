@@ -26,6 +26,19 @@ path isn't used when native lazy imports are available. Import-state tests
 should stay isolated so an earlier test can't make a deferred import appear
 successful by preloading its dependency.
 
+The `run` fixture accepts a self-contained, zero-argument function or module
+source. For functions, it writes the dedented function source to a temporary
+script and calls it in the child process. Put imports inside the function;
+parent globals, fixtures and enclosing closures aren't copied to the child.
+The function keeps its normal local scope.
+
+Use `textwrap.dedent` at the call site for multiline source strings inside
+functions, methods or classes. Keep module-scope import scenarios as source:
+calling a function would make its imports eager on Python 3.15 and would stop
+exercising global rebinding. Star imports also require module scope. Ordinary
+validation tests that don't require process isolation can run directly in
+pytest.
+
 For branch coverage, run `uv run pytest --cov --cov-report=term-missing`.
 Coverage's subprocess support captures the child interpreters. The parent test
 process may report that it didn't import the package; that is expected for
