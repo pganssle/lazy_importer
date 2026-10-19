@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import builtins
 import contextlib
-import dataclasses
 import importlib.util
 import operator
 import threading
@@ -17,13 +16,34 @@ if TYPE_CHECKING:
     from typing import Any, Final
 
 
-@dataclasses.dataclass(frozen=True)
 class _Request:
+    __slots__ = ("name", "namespace", "fromlist", "attribute", "path")
+
     name: str
     namespace: dict[str, Any]
     fromlist: tuple[str, ...]
-    attribute: str | None = None
-    path: tuple[str, ...] = ()
+    attribute: str | None
+    path: tuple[str, ...]
+
+    def __init__(
+        self,
+        name: str,
+        namespace: dict[str, Any],
+        fromlist: tuple[str, ...],
+        attribute: str | None = None,
+        path: tuple[str, ...] = (),
+    ) -> None:
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "namespace", namespace)
+        object.__setattr__(self, "fromlist", fromlist)
+        object.__setattr__(self, "attribute", attribute)
+        object.__setattr__(self, "path", path)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError("request is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("request is immutable")
 
     def load(self) -> Any:
         with _HOOK.suspended():
@@ -285,7 +305,15 @@ class _FromImport:
 
     def __getattribute__(self, name: str) -> _Proxy:
         request = object.__getattribute__(self, "_request")
-        return _Proxy(dataclasses.replace(request, attribute=name, fromlist=(name,)))
+        return _Proxy(
+            _Request(
+                request.name,
+                request.namespace,
+                (name,),
+                attribute=name,
+                path=request.path,
+            )
+        )
 
 
 class _ThreadState(threading.local):
@@ -369,8 +397,12 @@ class _ImportHook:
                 for index, component in enumerate(components[1:], 1):
                     children = object.__getattribute__(parent, "_children")
                     child = _Proxy(
-                        dataclasses.replace(
-                            request, path=tuple(components[1 : index + 1])
+                        _Request(
+                            request.name,
+                            request.namespace,
+                            request.fromlist,
+                            attribute=request.attribute,
+                            path=tuple(components[1 : index + 1]),
                         )
                     )
                     if component in children:

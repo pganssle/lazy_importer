@@ -6,14 +6,15 @@ from collections.abc import Callable
 import pytest
 
 
-def test_import_does_not_require_typing(
+def test_import_does_not_require_typing_or_dataclasses(
     run: Callable[[str | Callable[[], None]], None],
 ) -> None:
     def scenario() -> None:
         import sys
 
-        # Block imports even if the subprocess's instrumentation loaded typing.
+        # Block imports even if the subprocess's instrumentation loaded them.
         sys.modules["typing"] = None
+        sys.modules["dataclasses"] = None
 
         from lazy_importer import lazy_importer
 
