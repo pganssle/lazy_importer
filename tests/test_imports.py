@@ -413,3 +413,15 @@ def test_callable_resolves_lazy_arguments(run: Callable[[str], None]) -> None:
             from example_pkg import double, answer
         assert double(value=answer) == 84
     """)
+
+
+def test_dynamic_attribute_imports_remain_eager(run: Callable[[str], None]) -> None:
+    run("""
+        from lazy_importer import lazy_importer, resolve
+        __lazy_modules__ = {'dynamic_mod', 'example_pkg'}
+        with lazy_importer(__lazy_modules__):
+            from dynamic_mod import value
+            module = resolve(globals()['value'])
+        assert type(module).__name__ == 'module'
+        assert module.answer == 42
+    """)

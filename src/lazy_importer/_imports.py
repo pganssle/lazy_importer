@@ -24,16 +24,17 @@ class _Request:
             module = builtins.__import__(
                 self.name, self.namespace, self.namespace, self.fromlist, 0
             )
-        if self.attribute is not None:
-            try:
-                return getattr(module, self.attribute)
-            except AttributeError as exc:
-                raise ImportError(
-                    f"cannot import name {self.attribute!r} from {module.__name__!r}"
-                ) from exc
-        for component in self.path:
-            module = getattr(module, component)
-        return module
+            if self.attribute is not None:
+                try:
+                    return getattr(module, self.attribute)
+                except AttributeError as exc:
+                    raise ImportError(
+                        f"cannot import name {self.attribute!r} "
+                        f"from {module.__name__!r}"
+                    ) from exc
+            for component in self.path:
+                module = getattr(module, component)
+            return module
 
 
 class _Proxy:
