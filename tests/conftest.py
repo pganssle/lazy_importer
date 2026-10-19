@@ -29,6 +29,14 @@ def run(tmp_path: Path) -> Callable[[str], None]:
         "raise RuntimeError('broken')\n", encoding="utf-8"
     )
 
+    (tmp_path / "dynamic_mod.py").write_text(
+        "def __getattr__(name):\n"
+        "    if name != 'value': raise AttributeError(name)\n"
+        "    import example_pkg\n"
+        "    return example_pkg\n",
+        encoding="utf-8",
+    )
+
     def execute(source: str) -> None:
         env = dict(os.environ)
         # Installed package paths stay available; only fixture modules are added.
