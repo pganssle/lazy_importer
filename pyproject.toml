@@ -13,10 +13,13 @@ license-files = ["LICENSE"]
 
 [dependency-groups]
 test = ["pytest>=8", "pytest-cov>=6", "coverage>=7.16"]
-lint = ["ruff", "pyrefly"]
+lint = ["ruff", "pyrefly", "zizmor"]
+build = ["flit_core>=3.12,<4"]
+release = ["twine"]
+tooling = ["tox>=4", "tox-uv", "uv"]
 
 [tool.flit.sdist]
-include = ["tests/", "tox.ini", "CONTRIBUTING.md"]
+include = ["tests/", "tox.ini", "CONTRIBUTING.md", "uv.lock", ".github/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
