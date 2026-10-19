@@ -13,7 +13,7 @@ license-files = ["LICENSE"]
 
 [dependency-groups]
 test = ["pytest>=8", "pytest-cov>=6", "coverage>=7.16"]
-lint = ["ruff", "mypy"]
+lint = ["ruff", "pyrefly"]
 
 [tool.flit.sdist]
 include = ["tests/", "tox.ini", "CONTRIBUTING.md"]
@@ -28,9 +28,10 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
-[tool.mypy]
-python_version = "3.11"
-strict = true
+[tool.pyrefly]
+preset = "strict"
+project-includes = ["src"]
+python-version = "3.11"
 
 
 [tool.coverage.run]

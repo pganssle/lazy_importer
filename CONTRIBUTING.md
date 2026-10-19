@@ -7,7 +7,7 @@ uv sync --group test --group lint
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy src
+uv run pyrefly check
 ```
 
 `uv.lock` records the development dependency resolution. Runtime dependencies

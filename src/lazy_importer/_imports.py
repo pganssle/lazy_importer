@@ -7,7 +7,7 @@ import importlib.util
 import operator
 import threading
 import types
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from typing import Any, Final, cast
 
 
@@ -298,7 +298,7 @@ class _ImportHook:
         self._callback = self._import
 
     @contextlib.contextmanager
-    def suspended(self) -> Iterator[None]:
+    def suspended(self) -> Generator[None, None, None]:
         self._state.suspensions += 1
         try:
             yield
@@ -306,7 +306,7 @@ class _ImportHook:
             self._state.suspensions -= 1
 
     @contextlib.contextmanager
-    def activate(self, names: frozenset[str]) -> Iterator[None]:
+    def activate(self, names: frozenset[str]) -> Generator[None, None, None]:
         with self._lock:
             if self._users == 0:
                 self._previous = builtins.__import__
