@@ -76,7 +76,9 @@ commit IDs. Even the bootstrap uv version is read from its lockfile entry.
 
 Dependabot checks the `uv` ecosystem monthly and groups updates to direct and
 transitive dependencies, including the build tools, in one pull request. A
-second monthly group updates GitHub Actions pins. To update the lock manually,
+second monthly group updates GitHub Actions pins. Python updates are confined
+to the lockfile; changing dependency bounds remains a separate decision.
+To update the lock manually,
 run `uv lock --upgrade`, inspect the diff, and run the locked test matrix.
 
 To publish, update `project.version` and the lockfile, commit the change, and
