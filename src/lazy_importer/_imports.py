@@ -1,5 +1,7 @@
 """Implements deferred imports using documented Python protocols."""
 
+from __future__ import annotations
+
 import builtins
 import contextlib
 import dataclasses
@@ -7,8 +9,12 @@ import importlib.util
 import operator
 import threading
 import types
-from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
-from typing import Any, Final, cast
+
+# Type checkers recognize this flag without importing typing at runtime.
+TYPE_CHECKING = False
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
+    from typing import Any, Final
 
 
 @dataclasses.dataclass(frozen=True)
@@ -310,7 +316,7 @@ class _ImportHook:
         with self._lock:
             if self._users == 0:
                 self._previous = builtins.__import__
-                builtins.__import__ = cast(Any, self._callback)
+                vars(builtins)["__import__"] = self._callback
             self._users += 1
         self._state.scopes.append(names)
         try:

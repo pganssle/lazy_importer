@@ -1,9 +1,26 @@
-"""Verifies that free-threaded matrix jobs actually exercise that runtime."""
+"""Verifies runtime requirements and import overhead."""
 
 import os
 from collections.abc import Callable
 
 import pytest
+
+
+def test_import_does_not_require_typing(
+    run: Callable[[str | Callable[[], None]], None],
+) -> None:
+    def scenario() -> None:
+        import sys
+
+        # Block imports even if the subprocess's instrumentation loaded typing.
+        sys.modules["typing"] = None
+
+        from lazy_importer import lazy_importer
+
+        with lazy_importer([]):
+            pass
+
+    run(scenario)
 
 
 @pytest.mark.skipif(
