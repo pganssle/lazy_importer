@@ -32,3 +32,11 @@ select = ["E", "F", "I", "UP", "B"]
 python_version = "3.13"
 strict = true
 
+
+[tool.coverage.run]
+source = ["lazy_importer"]
+branch = true
+patch = ["subprocess"]
+
+[tool.coverage.report]
+show_missing = true
