@@ -1,5 +1,5 @@
 [build-system]
-requires = ["flit_core>=3.12,<4"]
+requires = ["flit_core>=3.12,<5"]
 build-backend = "flit_core.buildapi"
 
 [project]
@@ -14,7 +14,7 @@ license-files = ["LICENSE"]
 [dependency-groups]
 test = ["pytest>=8", "pytest-cov>=6", "coverage>=7.16"]
 lint = ["ruff", "pyrefly", "zizmor"]
-build = ["flit_core>=3.12,<4"]
+build = ["flit_core>=3.12,<5"]
 release = ["twine"]
 tooling = ["tox>=4", "tox-uv", "uv"]
 
