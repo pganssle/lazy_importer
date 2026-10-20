@@ -12,6 +12,30 @@ pytestmark: Final = pytest.mark.skipif(
 )
 
 
+def test_native_import_does_not_load_fallback_dependencies(
+    run: Callable[[str | Callable[[], None]], None],
+) -> None:
+    def scenario() -> None:
+        import builtins
+        import sys
+
+        # Blocking these imports detects fallback initialization, even when
+        # subprocess instrumentation has already loaded the dependencies.
+        sys.modules["threading"] = None
+        sys.modules["importlib.util"] = None
+        original = builtins.__import__
+
+        from lazy_importer import lazy_importer, resolve
+
+        with lazy_importer({"example_pkg"}):
+            assert builtins.__import__ is original
+        value = object()
+        assert resolve(value) is value
+        assert builtins.__import__ is original
+
+    run(scenario)
+
+
 def test_native_filter_can_force_eager_imports(
     run: Callable[[str | Callable[[], None]], None],
 ) -> None:

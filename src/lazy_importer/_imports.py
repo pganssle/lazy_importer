@@ -293,9 +293,6 @@ def resolve(value: Any, /) -> Any:
     """
     if type(value) is _Proxy:
         return _Proxy._resolve(value)
-    native_type = getattr(types, "LazyImportType", None)
-    if native_type is not None and type(value) is native_type:
-        return value.resolve()
     return value
 
 
@@ -422,9 +419,8 @@ _HOOK: Final = _ImportHook()
 def lazy_importer(modules: Iterable[str], /) -> contextlib.AbstractContextManager[None]:
     """Returns a context that defers imports of the exact module names supplied.
 
-    Uses native lazy imports when available; define __lazy_modules__ in the
-    importing module for that path. On older runtimes, activates thread-local
-    selection through a temporary builtins.__import__ hook. Use only around
+    Activates thread-local selection through a temporary builtins.__import__
+    hook on runtimes without native lazy imports. Use only around
     module-level import statements, without yielding or awaiting in the block.
     See the README for the fallback's proxy limitations.
     """
@@ -436,6 +432,4 @@ def lazy_importer(modules: Iterable[str], /) -> contextlib.AbstractContextManage
             raise TypeError(f"expected a module name string, got {name!r}")
         if not name or any(not part.isidentifier() for part in name.split(".")):
             raise ValueError(f"expected an absolute dotted module name, got {name!r}")
-    if hasattr(builtins, "__lazy_import__"):
-        return contextlib.nullcontext()
     return _HOOK.activate(frozenset(names))

@@ -255,6 +255,9 @@ def test_hook_restored_after_exception(
     run(scenario)
 
 
+@pytest.mark.skipif(
+    hasattr(builtins, "__lazy_import__"), reason="fallback validates selections"
+)
 @pytest.mark.parametrize(
     "value, error",
     [
