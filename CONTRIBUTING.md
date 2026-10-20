@@ -81,19 +81,35 @@ to the lockfile; changing dependency bounds remains a separate decision.
 To update the lock manually,
 run `uv lock --upgrade`, inspect the diff, and run the locked test matrix.
 
-To publish, update `project.version` and the lockfile, commit the change, and
-publish a GitHub release with the tag `v<version>`. The release workflow checks
-that the tag matches the package version and reruns CI at the release commit.
-Only after every check passes does it publish the tested wheel and source
-archive to PyPI. Ordinary pushes and pull requests never publish packages.
+Publishing happens in two stages through `publish.yml`. After updating
+`project.version` and the lockfile and committing the change, pushing a
+`v<version>` tag publishes to TestPyPI. Publishing a GitHub release for that tag
+then publishes to PyPI, allowing you to inspect the TestPyPI package first.
+For example, after committing version `0.1.0`:
 
-The PyPI trusted publisher must use these identifiers:
+```console
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Both events run the locked build and test matrix at the tagged commit and check
+that the tag matches the package version. The publishing job uploads the tested
+wheel and source archive only after every check passes. Branch pushes and pull
+requests never publish packages. A release rebuilds and tests the tagged source;
+it doesn't download the earlier upload from TestPyPI.
+
+PyPI and TestPyPI each need a trusted publisher with these identifiers:
 
 - Repository: `pganssle/lazy_importer`
 - Workflow: `publish.yml`
-- Environment: `pypi`
+- Environment: `release`
 
-The GitHub `pypi` environment permits `v*` tags. The publishing job has only
+For a first upload, register `lazy-importer` as a pending publisher in the
+registry's account publishing settings. If the project already exists, add the
+publisher in its project settings. A publisher previously configured with the
+`pypi` environment needs to be updated to `release`.
+
+The GitHub `release` environment permits `v*` tags. The publishing job has only
 OIDC token permissions and downloads the checked artifacts; it doesn't check
 out or execute project code. No PyPI API token is required. Configuring this
 workflow doesn't create a release or publish the current version.

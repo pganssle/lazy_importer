@@ -1,6 +1,10 @@
+# Tags publish to TestPyPI for review; published releases publish to PyPI.
+# Both registries trust publish.yml running in the release environment.
 name: Publish
 
 on:
+  push:
+    tags: ['v*']
   release:
     types: [published]
 
@@ -17,13 +21,14 @@ jobs:
     uses: $/.github/workflows/ci.yml
 
   publish:
-    name: Publish to PyPI
+    name: Publish distributions
+    if: github.event.repository.fork == false
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
-      name: pypi
-      url: https://pypi.org/p/lazy-importer
+      name: release
+      url: ${{ github.event_name == 'release' && 'https://pypi.org/p/lazy-importer' || 'https://test.pypi.org/p/lazy-importer' }}
     permissions:
       id-token: write
     steps:
@@ -31,5 +36,11 @@ jobs:
         with:
           name: distributions
           path: dist
-      - name: Publish tested distributions using trusted publishing
+      - name: Publish to TestPyPI
+        if: github.event_name == 'push'
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          repository-url: https://test.pypi.org/legacy/
+      - name: Publish to PyPI
+        if: github.event_name == 'release'
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
