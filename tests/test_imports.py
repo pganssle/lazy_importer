@@ -1,12 +1,9 @@
 """Exercises the common public contract on fallback and native runtimes."""
 
-import builtins
 import textwrap
 from collections.abc import Callable
 
 import pytest
-
-import lazy_importer
 
 
 @pytest.mark.parametrize(
@@ -33,7 +30,7 @@ def test_import_defers_execution(
             import sys
             from lazy_importer import lazy_importer
             __lazy_modules__ = {{'example_pkg', 'example_pkg.child'}}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 {statement}
             assert 'example_pkg' not in sys.modules
             assert ({expression}) == {expected}
@@ -50,7 +47,7 @@ def test_each_from_name_resolves_independently(
             import sys
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from example_pkg import answer, other
             proxies = [globals()['answer'], globals()['other']]
             assert resolve(proxies[0]) == 42
@@ -70,7 +67,7 @@ def test_failed_import_can_retry(
             import sys, types
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'missing_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 import missing_pkg
             proxy = globals()['missing_pkg']
             try:
@@ -94,7 +91,7 @@ def test_module_exception_propagates_at_use(
             import sys
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'broken'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 import broken
             assert 'broken' not in sys.modules
             try:
@@ -115,7 +112,7 @@ def test_missing_from_attribute_is_import_error(
         textwrap.dedent("""
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from example_pkg import missing
             try:
                 resolve(globals()['missing'])
@@ -134,7 +131,7 @@ def test_relative_import(run: Callable[[str | Callable[[], None]], None]) -> Non
             from lazy_importer import lazy_importer
             __package__ = 'example_pkg'
             __lazy_modules__ = {'example_pkg.child'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from .child import value
             assert 'example_pkg' not in sys.modules
             assert value + 1 == 18
@@ -148,7 +145,7 @@ def test_star_import_is_eager(run: Callable[[str | Callable[[], None]], None]) -
             import sys
             from lazy_importer import lazy_importer
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from example_pkg import *
             assert 'example_pkg' in sys.modules
             assert answer == 42
@@ -164,7 +161,7 @@ def test_selection_is_exact_and_dependencies_are_eager(
             import sys
             from lazy_importer import lazy_importer
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 import eager_dep
             assert 'example_pkg' in sys.modules
             assert type(eager_dep.example_pkg).__name__ == 'module'
@@ -180,7 +177,7 @@ def test_dotted_siblings_are_available(
             import sys
             from lazy_importer import lazy_importer
             __lazy_modules__ = {'example_pkg.child', 'example_pkg.sibling'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 import example_pkg.child
                 import example_pkg.sibling
             assert 'example_pkg' not in sys.modules
@@ -216,7 +213,7 @@ def test_proxy_operations(
         textwrap.dedent(f"""
             from lazy_importer import lazy_importer
             __lazy_modules__ = {{'example_pkg'}}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from example_pkg import items, answer, other
             assert ({expression}) == {expected}
         """)
@@ -228,7 +225,7 @@ def test_class_base(run: Callable[[str | Callable[[], None]], None]) -> None:
         textwrap.dedent("""
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from example_pkg import Example
             class Child(Example): pass
             assert issubclass(Child, resolve(Example))
@@ -246,38 +243,14 @@ def test_hook_restored_after_exception(
 
         original = builtins.__import__
         try:
-            with lazy_importer.lazy_importer({"example_pkg"}):
+            globals()["__lazy_modules__"] = {"example_pkg"}
+            with lazy_importer.lazy_importer():
                 raise ValueError("body")
         except ValueError:
             pass
         assert builtins.__import__ is original
 
     run(scenario)
-
-
-@pytest.mark.skipif(
-    hasattr(builtins, "__lazy_import__"), reason="fallback validates selections"
-)
-@pytest.mark.parametrize(
-    "value, error",
-    [
-        ("abc", TypeError),
-        ([1], TypeError),
-        ([""], ValueError),
-        ([".relative"], ValueError),
-        (["a..b"], ValueError),
-        (["a-b"], ValueError),
-    ],
-)
-def test_invalid_selection_leaves_hook_unchanged(
-    monkeypatch: pytest.MonkeyPatch, value: object, error: type[Exception]
-) -> None:
-    original = builtins.__import__
-    # Restore the hook even if a regression changes it before raising.
-    monkeypatch.setattr(builtins, "__import__", original)
-    with pytest.raises(error, match="expected"):
-        lazy_importer.lazy_importer(value)
-    assert builtins.__import__ is original
 
 
 def test_resolution_uses_current_import_hook(
@@ -288,7 +261,7 @@ def test_resolution_uses_current_import_hook(
             import builtins
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 import example_pkg
             original = builtins.__import__
             calls = []
@@ -319,7 +292,9 @@ def test_thread_context_does_not_leak(
 
             results.append(type(example_pkg).__name__)
 
-        with lazy_importer.lazy_importer({"example_pkg"}):
+        globals()["__lazy_modules__"] = {"example_pkg"}
+
+        with lazy_importer.lazy_importer():
             thread = threading.Thread(target=worker)
             thread.start()
             thread.join(5)
@@ -338,7 +313,7 @@ def test_concurrent_resolution_returns_one_module(
             import concurrent.futures
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 import example_pkg
             proxy = globals()['example_pkg']
             with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
@@ -356,7 +331,7 @@ def test_imported_attributes_do_not_collide_with_proxy_state(
         textwrap.dedent("""
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from example_pkg import __name__, __dict__
             assert resolve(globals()['__name__']) == 'example_pkg'
             assert resolve(globals()['__dict__'])['answer'] == 42
@@ -371,7 +346,7 @@ def test_proxy_mutation_and_inplace_operations(
         textwrap.dedent("""
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 import example_pkg as alias
                 from example_pkg import items, answer
             alias.extra = 8
@@ -394,7 +369,7 @@ def test_rebinding_does_not_overwrite_new_value(
         textwrap.dedent("""
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 import example_pkg
             proxies = [globals()['example_pkg']]
             example_pkg = 'replacement'
@@ -413,7 +388,7 @@ def test_relative_package_from_import(
             from lazy_importer import lazy_importer
             __package__ = 'example_pkg'
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from . import child
             assert 'example_pkg' not in sys.modules
             assert child.value == 17
@@ -429,7 +404,7 @@ def test_parent_resolves_without_loading_pending_sibling(
             import sys
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'example_pkg.child', 'example_pkg.sibling'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 import example_pkg.child
                 import example_pkg.sibling
             assert example_pkg.answer == 42
@@ -449,7 +424,7 @@ def test_eager_import_does_not_resolve_from_binding(
             import importlib, sys
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from example_pkg import answer
             proxies = [globals()['answer']]
             module = importlib.import_module('example_pkg')
@@ -468,7 +443,7 @@ def test_selected_prefix_does_not_select_submodule(
             import sys
             from lazy_importer import lazy_importer
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 import example_pkg.child
             assert 'example_pkg.child' in sys.modules
         """)
@@ -483,7 +458,7 @@ def test_relative_import_retains_original_package(
             from lazy_importer import lazy_importer
             __package__ = 'example_pkg'
             __lazy_modules__ = {'example_pkg.child'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from .child import value
             __package__ = 'different_package'
             assert value == 17
@@ -498,7 +473,7 @@ def test_callable_resolves_lazy_arguments(
         textwrap.dedent("""
             from lazy_importer import lazy_importer
             __lazy_modules__ = {'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from example_pkg import double, answer
             assert double(value=answer) == 84
         """)
@@ -512,7 +487,7 @@ def test_dynamic_attribute_imports_remain_eager(
         textwrap.dedent("""
             from lazy_importer import lazy_importer, resolve
             __lazy_modules__ = {'dynamic_mod', 'example_pkg'}
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 from dynamic_mod import value
                 module = resolve(globals()['value'])
             assert type(module).__name__ == 'module'

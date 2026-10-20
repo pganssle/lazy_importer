@@ -18,7 +18,7 @@ def test_import_does_not_require_typing_or_dataclasses(
 
         from lazy_importer import lazy_importer
 
-        with lazy_importer([]):
+        with lazy_importer():
             pass
 
     run(scenario)

@@ -12,7 +12,7 @@ pytestmark: Final = pytest.mark.skipif(
 )
 
 
-def test_nested_context_masks_and_restores_selection(
+def test_nested_context_keeps_outer_hook_active(
     run: Callable[[str | Callable[[], None]], None],
 ) -> None:
     run(
@@ -20,11 +20,14 @@ def test_nested_context_masks_and_restores_selection(
             import builtins, sys
             from lazy_importer import lazy_importer
             original = builtins.__import__
-            with lazy_importer({'example_pkg'}):
-                with lazy_importer(set()):
-                    import example_pkg.child
+            __lazy_modules__ = {'example_pkg', 'example_pkg.child'}
+            with lazy_importer():
+                with lazy_importer():
+                    from example_pkg.child import value
+                assert builtins.__import__ is not original
                 import example_pkg as alias
-            assert globals()['alias'] is not sys.modules['example_pkg']
+            assert 'example_pkg' not in sys.modules
+            assert value == 17
             assert alias.answer == 42
             assert builtins.__import__ is original
         """)
@@ -38,7 +41,8 @@ def test_global_aliases_are_replaced(
         textwrap.dedent("""
             import sys
             from lazy_importer import lazy_importer, resolve
-            with lazy_importer({'example_pkg'}):
+            __lazy_modules__ = {'example_pkg'}
+            with lazy_importer():
                 import example_pkg as first
             second = first
             proxies = [first]
@@ -65,7 +69,9 @@ def test_replaced_hook_is_not_clobbered(
         def replacement(*args: Any, **kwargs: Any) -> Any:
             return original(*args, **kwargs)
 
-        with lazy_importer.lazy_importer({"example_pkg"}):
+        globals()["__lazy_modules__"] = {"example_pkg"}
+
+        with lazy_importer.lazy_importer():
             builtins.__import__ = replacement
         assert builtins.__import__ is replacement
 
@@ -87,7 +93,7 @@ def test_overlapping_threads_restore_hook_at_last_exit(
         results = []
 
         def worker() -> None:
-            with lazy_importer.lazy_importer({"example_pkg"}):
+            with lazy_importer.lazy_importer():
                 import example_pkg
 
                 results.append(type(example_pkg).__name__ != "module")
@@ -95,7 +101,9 @@ def test_overlapping_threads_restore_hook_at_last_exit(
                 assert leave.wait(5)
             results.append(lazy_importer.resolve(example_pkg).answer)
 
-        with lazy_importer.lazy_importer({"example_pkg"}):
+        globals()["__lazy_modules__"] = {"example_pkg"}
+
+        with lazy_importer.lazy_importer():
             thread = threading.Thread(target=worker)
             thread.start()
             assert entered.wait(5)
@@ -118,7 +126,9 @@ def test_circular_resolution_raises_and_can_retry(
 
         import lazy_importer
 
-        with lazy_importer.lazy_importer({"example_pkg"}):
+        globals()["__lazy_modules__"] = {"example_pkg"}
+
+        with lazy_importer.lazy_importer():
             import example_pkg
         original = builtins.__import__
 
@@ -150,7 +160,8 @@ def test_relative_import_uses_spec_when_package_is_absent(
             from lazy_importer import lazy_importer
             __package__ = None
             __spec__ = importlib.machinery.ModuleSpec('example_pkg.client', None)
-            with lazy_importer({'example_pkg.child'}):
+            __lazy_modules__ = {'example_pkg.child'}
+            with lazy_importer():
                 from .child import value
             assert 'example_pkg' not in sys.modules
             assert value == 17
@@ -171,7 +182,8 @@ def test_relative_import_uses_module_name_as_last_resort(
             __name__ = {'"example_pkg"' if package else '"example_pkg.client"'}
             if {package}:
                 __path__ = []
-            with lazy_importer({{'example_pkg.child'}}):
+            __lazy_modules__ = {{'example_pkg.child'}}
+            with lazy_importer():
                 from .child import value
             assert 'example_pkg' not in sys.modules
             assert value == 17
@@ -188,7 +200,9 @@ def test_import_without_namespace_remains_eager(
 
         import lazy_importer
 
-        with lazy_importer.lazy_importer({"example_pkg"}):
+        globals()["__lazy_modules__"] = {"example_pkg"}
+
+        with lazy_importer.lazy_importer():
             module = builtins.__import__("example_pkg")
         assert module is sys.modules["example_pkg"]
 
@@ -203,12 +217,49 @@ def test_call_while_context_active_keeps_dependencies_eager(
 
         import lazy_importer
 
-        with lazy_importer.lazy_importer({"eager_dep", "example_pkg"}):
+        globals()["__lazy_modules__"] = {"eager_dep", "example_pkg"}
+
+        with lazy_importer.lazy_importer():
             import eager_dep
 
             assert "eager_dep" not in sys.modules
             module = lazy_importer.resolve(eager_dep)
         assert type(module.example_pkg).__name__ == "module"
         assert module.example_pkg.answer == 42
+
+    run(scenario)
+
+
+def test_membership_error_restores_hook_and_allows_retry(
+    run: Callable[[str | Callable[[], None]], None],
+) -> None:
+    def scenario() -> None:
+        import builtins
+        import sys
+
+        import lazy_importer
+
+        class Selection:
+            def __contains__(self, name: str) -> bool:
+                raise LookupError("selection failed")
+
+        original = builtins.__import__
+        globals()["__lazy_modules__"] = Selection()
+        try:
+            with lazy_importer.lazy_importer():
+                import example_pkg
+        except LookupError as exc:
+            assert str(exc) == "selection failed"
+        else:
+            raise AssertionError("membership failure was swallowed")
+        assert "example_pkg" not in sys.modules
+        assert builtins.__import__ is original
+
+        globals()["__lazy_modules__"] = {"example_pkg"}
+        with lazy_importer.lazy_importer():
+            import example_pkg
+        assert "example_pkg" not in sys.modules
+        assert example_pkg.answer == 42
+        assert builtins.__import__ is original
 
     run(scenario)

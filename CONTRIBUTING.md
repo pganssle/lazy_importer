@@ -100,12 +100,15 @@ workflow doesn't create a release or publish the current version.
 
 ## Design constraints
 
-The public surface is `lazy_importer(modules)` and `resolve(value)`. The
+The public surface is `lazy_importer()` and `resolve(value)`. The
 fallback uses the documented import hook to create proxies and suspends
 selection while executing an import. Hook lifetime is synchronized across
-threads, while each thread owns its stack of active selections. Proxy locks
-protect publication of a resolved value, but aren't held while executing
-module code or import hooks.
+threads, while each thread tracks its active context depth. Each import reads
+`__lazy_modules__` from the importing module's globals and checks membership;
+no frame inspection or copy of the declaration is needed. Membership checks
+also suspend the hook so a custom container can import its own dependencies.
+Proxy locks protect publication of a resolved value, but aren't held while
+executing module code or import hooks.
 
 The proxy cannot make variable access transparent. Document differences from
 native behavior rather than adding frame inspection, bytecode rewriting, or

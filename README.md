@@ -14,7 +14,7 @@ from lazy_importer import lazy_importer
 
 __lazy_modules__ = {"json", "pathlib"}
 
-with lazy_importer(__lazy_modules__):
+with lazy_importer():
     import json
     from pathlib import Path
 
@@ -24,12 +24,12 @@ def read_config(filename: str) -> object:
     return json.loads(Path(filename).read_text(encoding="utf-8"))
 ```
 
-The use of the `__lazy_modules__` declaration is important: Python 3.15+ will
-use it directly and make these imports lazy with the standard mechanism.
-The context is a no-op on those runtimes: it ignores its argument and leaves
-import behavior to Python, including its lazy-import controls and filtering.
-The fallback implementation is not loaded. Without the declaration, the context
-alone won't enable native laziness.
+`__lazy_modules__` determines which imports are lazy. On Python 3.11–3.14, the
+context enables the fallback, which checks the importing module's declaration
+at each import. On Python 3.15+, Python reads the declaration directly and the
+context is a no-op, leaving native controls and filtering in effect without
+loading the fallback implementation. Without a declaration, imports remain
+eager under the default interpreter settings.
 
 `__lazy_modules__` contains the names of the modules whose imports should be
 lazy. For a `from` import, the selected module is the one after `from`:
@@ -45,7 +45,12 @@ lazy. For a `from` import, the selected module is the one after `from`:
 With a set of names, selecting `"example"` doesn't also select imports of
 `"example.child"`. This is also how PEP 810's `__lazy_modules__` works.
 
-Each call to `lazy_importer(...)` creates a context. The fallback context can
+Both paths check membership in `__lazy_modules__` at each import, so changes to
+the declaration take effect within an active context. A custom container can
+select names through `__contains__` without supporting iteration. An empty or
+absent declaration selects no imports.
+
+Each call to `lazy_importer()` creates a context. The fallback context can
 only be entered once, so separate `with` blocks need separate calls even if they
 use the same selection. This is why the example calls `lazy_importer` in the
 `with` statement rather than storing the context for reuse.
@@ -87,7 +92,7 @@ another variable or putting it in a container can retain a proxy:
 from lazy_importer import lazy_importer, resolve
 
 __lazy_modules__ = {"decimal"}
-with lazy_importer(__lazy_modules__):
+with lazy_importer():
     from decimal import Decimal
 
 classes = [Decimal]
@@ -112,7 +117,7 @@ can also see the proxy's methods rather than the real object's capabilities:
 from lazy_importer import lazy_importer, resolve
 
 __lazy_modules__ = {"math"}
-with lazy_importer(__lazy_modules__):
+with lazy_importer():
     from math import pi
 
 print(callable(pi))  # True on the fallback; False with native imports.
@@ -136,23 +141,19 @@ def load_decimal():
     return decimal
 
 
-with lazy_importer(__lazy_modules__):
+with lazy_importer():
     module = load_decimal()  # A proxy on the fallback; a real module on 3.15+.
 ```
 
 A module-level block containing only import statements avoids this difference.
 The fallback also does not enforce the native restrictions on lazy imports in
 class bodies or `try` blocks. If a context spans a `yield` or `await`, other code
-running on that thread can inherit its selection. Other threads have independent
-selections, and nested fallback contexts use the innermost selection, with an
-empty selection making imports eager until that inner context exits.
+running on that thread can have its imports deferred according to its own
+module's declaration. Entering a context doesn't enable the fallback on other
+threads. Nested contexts keep it active until the outermost context exits.
 
-The fallback captures the supplied iterable of names when the context is
-created. Native `__lazy_modules__` checks membership at each import, so changing
-the collection or supplying an object with a custom `__contains__` method can
-produce different results. Native controls and filtering, `sys.lazy_modules`,
-and exception chaining back to the import declaration are not provided on older
-runtimes.
+Native controls and filtering, `sys.lazy_modules`, and exception chaining back
+to the import declaration are not provided on older runtimes.
 
 While active, the fallback temporarily replaces `builtins.__import__` and
 preserves any pre-existing hook. Code that replaces the same hook during a

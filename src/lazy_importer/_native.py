@@ -10,11 +10,11 @@ if TYPE_CHECKING:
     from typing import Any
 
 
-def lazy_importer(modules: object, /) -> contextlib.AbstractContextManager[None]:
+def lazy_importer() -> contextlib.AbstractContextManager[None]:
     """Returns a context that leaves imports unchanged.
 
-    The argument is ignored. The importing module's __lazy_modules__ declaration
-    and interpreter policy determine which imports are lazy.
+    The importing module's __lazy_modules__ declaration and interpreter policy
+    determine which imports are lazy.
     """
     return contextlib.nullcontext()
 

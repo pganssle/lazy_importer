@@ -27,7 +27,7 @@ def test_native_import_does_not_load_fallback_dependencies(
 
         from lazy_importer import lazy_importer, resolve
 
-        with lazy_importer({"example_pkg"}):
+        with lazy_importer():
             assert builtins.__import__ is original
         value = object()
         assert resolve(value) is value
@@ -46,7 +46,7 @@ def test_native_filter_can_force_eager_imports(
             original = builtins.__import__
             __lazy_modules__ = {'example_pkg'}
             sys.set_lazy_imports_filter(lambda importer, name, fromlist: False)
-            with lazy_importer(__lazy_modules__):
+            with lazy_importer():
                 import example_pkg
             assert 'example_pkg' in sys.modules
             assert builtins.__import__ is original
@@ -63,7 +63,7 @@ def test_native_path_requires_module_declaration(
             import sys, builtins
             from lazy_importer import lazy_importer
             original = builtins.__import__
-            with lazy_importer({'example_pkg'}):
+            with lazy_importer():
                 import example_pkg
             assert 'example_pkg' in sys.modules
             assert builtins.__import__ is original

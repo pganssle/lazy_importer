@@ -12,7 +12,7 @@ import types
 # Type checkers recognize this flag without importing typing at runtime.
 TYPE_CHECKING = False
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
+    from collections.abc import Callable, Generator, Mapping, Sequence
     from typing import Any, Final
 
 
@@ -315,7 +315,7 @@ class _FromImport:
 
 class _ThreadState(threading.local):
     def __init__(self) -> None:
-        self.scopes: list[frozenset[str]] = []
+        self.depth = 0
         self.suspensions = 0
 
 
@@ -337,17 +337,17 @@ class _ImportHook:
             self._state.suspensions -= 1
 
     @contextlib.contextmanager
-    def activate(self, names: frozenset[str]) -> Generator[None, None, None]:
+    def activate(self) -> Generator[None, None, None]:
         with self._lock:
             if self._users == 0:
                 self._previous = builtins.__import__
                 vars(builtins)["__import__"] = self._callback
             self._users += 1
-        self._state.scopes.append(names)
+        self._state.depth += 1
         try:
             yield
         finally:
-            self._state.scopes.pop()
+            self._state.depth -= 1
             with self._lock:
                 self._users -= 1
                 if self._users == 0 and builtins.__import__ is self._callback:
@@ -362,7 +362,13 @@ class _ImportHook:
         level: int = 0,
     ) -> Any:
         state = self._state
-        if state.scopes and not state.suspensions and globals is not None:
+        if (
+            state.depth
+            and not state.suspensions
+            and globals is not None
+            and "*" not in (fromlist or ())
+            and name != "__future__"
+        ):
             absolute = name
             if level:
                 package = globals.get("__package__")
@@ -375,11 +381,10 @@ class _ImportHook:
                         if "__path__" not in globals:
                             package = package.rpartition(".")[0]
                 absolute = importlib.util.resolve_name("." * level + name, package)
-            if (
-                absolute in state.scopes[-1]
-                and "*" not in (fromlist or ())
-                and absolute != "__future__"
-            ):
+            # Membership may run user code that imports its own dependencies.
+            with self.suspended():
+                selected = absolute in globals.get("__lazy_modules__", ())
+            if selected:
                 request = _Request(absolute, globals, tuple(fromlist or ()))
                 if fromlist:
                     return _FromImport(request)
@@ -416,20 +421,12 @@ class _ImportHook:
 _HOOK: Final = _ImportHook()
 
 
-def lazy_importer(modules: Iterable[str], /) -> contextlib.AbstractContextManager[None]:
-    """Returns a context that defers imports of the exact module names supplied.
+def lazy_importer() -> contextlib.AbstractContextManager[None]:
+    """Returns a context that enables the importing module's __lazy_modules__.
 
-    Activates thread-local selection through a temporary builtins.__import__
-    hook on runtimes without native lazy imports. Use only around
-    module-level import statements, without yielding or awaiting in the block.
-    See the README for the fallback's proxy limitations.
+    Each import checks membership in its module's current declaration. The
+    fallback context is single-use and applies to imports on the current thread.
+    Module-level blocks containing only imports avoid differences from native
+    lazy imports described in the README.
     """
-    if isinstance(modules, str):
-        raise TypeError("expected an iterable of module names, got a string")
-    names = tuple(modules)
-    for name in names:
-        if not isinstance(name, str):
-            raise TypeError(f"expected a module name string, got {name!r}")
-        if not name or any(not part.isidentifier() for part in name.split(".")):
-            raise ValueError(f"expected an absolute dotted module name, got {name!r}")
-    return _HOOK.activate(frozenset(names))
+    return _HOOK.activate()
