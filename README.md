@@ -160,5 +160,6 @@ preserves any pre-existing hook. Code that replaces the same hook during a
 context can interfere with lazy selection; if that happens, exiting the context
 leaves the replacement in place. No proxy is inserted into `sys.modules`.
 
-The package has no runtime dependencies. See [CONTRIBUTING.md](CONTRIBUTING.md)
-for testing and build instructions.
+The package has no runtime dependencies. Release notes are collected in
+[CHANGELOG.rst](CHANGELOG.rst). See [CONTRIBUTING.md](CONTRIBUTING.md) for testing
+and build instructions.

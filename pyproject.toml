@@ -16,10 +16,24 @@ test = ["pytest>=8", "pytest-cov>=6", "coverage>=7.16"]
 lint = ["ruff", "pyrefly", "zizmor"]
 build = ["flit_core>=3.12,<4"]
 release = ["twine"]
+changelog = ["scriv"]
 tooling = ["tox>=4", "tox-uv", "uv"]
 
 [tool.flit.sdist]
-include = ["tests/", "tox.ini", "CONTRIBUTING.md", "uv.lock", ".github/"]
+include = [
+    "tests/",
+    "tox.ini",
+    "CONTRIBUTING.md",
+    "CHANGELOG.rst",
+    "changelog.d/",
+    "uv.lock",
+    ".github/",
+]
+
+[tool.scriv]
+format = "rst"
+categories = ["Breaking changes", "Major", "Features", "Bugfixes", "Misc"]
+entry_title_template = "Version {{ version }} ({{ date.strftime('%Y-%m-%d') }})"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

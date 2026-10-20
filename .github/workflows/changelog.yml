@@ -1,0 +1,31 @@
+name: Changelog
+
+on:
+  pull_request:
+    # Re-run when labels change so skip-changelog takes effect immediately.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check for a changelog fragment
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          fragments=$(git diff --name-only --diff-filter=A "$BASE_SHA"...HEAD -- 'changelog.d/*.rst')
+          if [ -z "$fragments" ]; then
+            echo "::error::This pull request doesn't add a changelog fragment. Run 'uv run --locked --only-group tooling tox -e changelog' to create one, or add the 'skip-changelog' label if the change doesn't need a changelog entry."
+            exit 1
+          fi
+          echo "Changelog fragments added:"
+          echo "$fragments"

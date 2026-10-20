@@ -12,9 +12,10 @@ uv run --no-sync pyrefly check
 uv run --no-sync zizmor --offline .github/workflows
 ```
 
-`uv.lock` records the test, lint, build, release and environment-management
-versions, including transitive dependencies. Runtime dependencies are empty;
-consumers aren't constrained by this development lockfile. `--locked` rejects
+`uv.lock` records the test, lint, build, release, changelog and
+environment-management versions, including transitive dependencies. Runtime
+dependencies are empty; consumers aren't constrained by this development
+lockfile. `--locked` rejects
 an out-of-date lock instead of silently resolving different versions. Build
 isolation is disabled after installing the locked backend, so Flit isn't
 resolved independently of the lock.
@@ -66,6 +67,47 @@ and the wheel includes the license and `py.typed` marker. Keep packaging,
 behavioral changes with their tests, and unrelated documentation changes in
 separate commits.
 
+## Changelog entries
+
+User-facing changes have changelog entries managed with
+[scriv](https://scriv.readthedocs.io/). The command below creates a fragment in
+`changelog.d/` using the locked tool version:
+
+```sh
+uv run --locked --only-group tooling tox -e changelog
+```
+
+Fragments use reStructuredText. Uncomment the appropriate section and describe
+the change in a sentence or two: `Features`, `Bugfixes` or `Misc` for ordinary
+changes, `Major` for changes everyone upgrading needs to know about, and
+`Breaking changes` for changes that can break existing code. An increased
+minimum Python version, for example, belongs under `Major`.
+
+Entries include links to the pull request and any issues it fixes:
+
+```rst
+- Fixed ... (PR `#123 <https://github.com/pganssle/lazy_importer/pull/123>`__;
+  fixes `#45 <https://github.com/pganssle/lazy_importer/issues/45>`__)
+```
+
+The two trailing underscores make these anonymous links, allowing the same
+number to appear more than once in a release's notes. Fragments are committed
+with the changes they describe. CI checks that each PR adds an `.rst` fragment;
+the `skip-changelog` label exempts changes that do not need an entry, such as
+refactoring or CI maintenance.
+
+For a release, collect the fragments into [CHANGELOG.rst](CHANGELOG.rst):
+
+```sh
+uv run --locked --only-group tooling tox -e changelog -- collect --version <version>
+```
+
+Scriv creates a heading such as `Version 0.1.1 (2026-10-20)` and removes the
+collected fragments. The changelog update and fragment deletions belong in the
+release-preparation PR, alongside the version and lockfile updates. That PR
+uses `skip-changelog`, since it collects existing entries rather than adding
+a new fragment.
+
 ## CI and releases
 
 GitHub Actions builds the distributions, checks metadata, and tests the same
@@ -81,10 +123,11 @@ to the lockfile; changing dependency bounds remains a separate decision.
 To update the lock manually,
 run `uv lock --upgrade`, inspect the diff, and run the locked test matrix.
 
-Publishing happens in two stages through `publish.yml`. After updating
-`project.version` and the lockfile and committing the change, pushing a
-`v<version>` tag publishes to TestPyPI. Publishing a GitHub release for that tag
-then publishes to PyPI, allowing you to inspect the TestPyPI package first.
+Publishing happens in two stages through `publish.yml`. After collecting the
+changelog, updating `project.version` and the lockfile, and merging the
+release-preparation PR, pushing a `v<version>` tag publishes to TestPyPI.
+Publishing a GitHub release for that tag then publishes to PyPI, allowing you
+to inspect the TestPyPI package first.
 For example, after committing version `0.1.0`:
 
 ```console
