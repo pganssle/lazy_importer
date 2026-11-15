@@ -161,5 +161,5 @@ context can interfere with lazy selection; if that happens, exiting the context
 leaves the replacement in place. No proxy is inserted into `sys.modules`.
 
 The package has no runtime dependencies. Release notes are collected in
-[CHANGELOG.rst](CHANGELOG.rst). See [CONTRIBUTING.md](CONTRIBUTING.md) for testing
+[CHANGELOG.rst](https://github.com/pganssle/lazy_importer/blob/main/CHANGELOG.rst). See [CONTRIBUTING.md](https://github.com/pganssle/lazy_importer/blob/main/CONTRIBUTING.md) for testing
 and build instructions.

@@ -11,6 +11,11 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 
+[project.urls]
+Homepage = "https://github.com/pganssle/lazy_importer"
+Repository = "https://github.com/pganssle/lazy_importer"
+Issues = "https://github.com/pganssle/lazy_importer/issues"
+
 [dependency-groups]
 test = ["pytest>=8", "pytest-cov>=6", "coverage>=7.16"]
 lint = ["ruff", "pyrefly", "zizmor"]
