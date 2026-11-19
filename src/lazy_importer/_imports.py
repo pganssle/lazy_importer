@@ -6,6 +6,7 @@ import builtins
 import contextlib
 import importlib.util
 import operator
+import sys
 import threading
 import types
 
@@ -46,7 +47,7 @@ class _Request:
         raise AttributeError("request is immutable")
 
     def load(self) -> Any:
-        with _HOOK.suspended():
+        with _HOOK.suspended(), _preserve_pending(self.name):
             module = builtins.__import__(
                 self.name, self.namespace, self.namespace, self.fromlist, 0
             )
@@ -87,23 +88,24 @@ class _Proxy:
             resolving.active = False
         # Never hold a proxy lock while running import hooks or module code:
         # another thread importing that module may need this same proxy.
-        with object.__getattribute__(self, "_lock"):
-            resolved = object.__getattribute__(self, "_resolved")
-            if resolved:
-                return resolved[0]
-            object.__setattr__(self, "_resolved", (value,))
-            if isinstance(value, types.ModuleType):
-                for name, child in object.__getattribute__(self, "_children").items():
-                    if name not in vars(value):
-                        vars(value)[name] = child
-                        object.__getattribute__(child, "_namespaces").append(
-                            vars(value)
-                        )
-            for namespace in object.__getattribute__(self, "_namespaces"):
-                for name, binding in tuple(namespace.items()):
-                    if binding is self and namespace.get(name) is self:
-                        namespace[name] = value
-        return value
+        children = object.__getattribute__(self, "_children")
+        while True:
+            child_count = len(children)
+            if child_count and issubclass(type(value), types.ModuleType):
+                _publish_children(value, self)
+            with object.__getattribute__(self, "_lock"):
+                resolved = object.__getattribute__(self, "_resolved")
+                if resolved:
+                    return resolved[0]
+                # Another import may have added a child while we were publishing.
+                if len(children) != child_count:
+                    continue
+                object.__setattr__(self, "_resolved", (value,))
+                for namespace in object.__getattribute__(self, "_namespaces"):
+                    for name, binding in tuple(namespace.items()):
+                        if binding is self and namespace.get(name) is self:
+                            namespace[name] = value
+                return value
 
     def __getattribute__(self, name: str) -> Any:
         if name == "__mro_entries__":
@@ -130,6 +132,90 @@ class _Proxy:
 
     def __mro_entries__(self, bases: tuple[type, ...]) -> tuple[type, ...]:
         return (_Proxy._resolve(self),)
+
+
+def _module_name(value: Any) -> str | None:
+    # isinstance() may read a proxy's __class__ and resolve it.
+    if type(value) is _Proxy:
+        request = object.__getattribute__(value, "_request")
+        if request.attribute is None:
+            return ".".join((request.name.partition(".")[0], *request.path))
+    elif issubclass(type(value), types.ModuleType):
+        return vars(value).get("__name__")
+    return None
+
+
+@contextlib.contextmanager
+def _preserve_pending(name: str) -> Generator[None, None, None]:
+    # Loading a descendant can replace a pending attribute on a real package
+    # even if the descendant itself fails to import.
+    parts = name.split(".")
+    parent_name = parts[0]
+    parent = sys.modules.get(parent_name)
+    for part in parts[1:]:
+        if type(parent) is _Proxy or _module_name(parent) != parent_name:
+            break
+        namespace = vars(parent)
+        parent = namespace.get(part)
+        parent_name += "." + part
+        if type(parent) is _Proxy and _module_name(parent) == parent_name:
+            try:
+                yield
+            finally:
+                replacement = namespace.get(part)
+                if (
+                    replacement is not None
+                    and type(replacement) is not _Proxy
+                    and _module_name(replacement) == parent_name
+                ):
+                    _publish_children(replacement, parent)
+            return
+    yield
+
+
+def _publish_children(module: types.ModuleType, proxy: _Proxy) -> None:
+    """Attach missing children and merge shared prefixes without resolving them."""
+    pending: list[tuple[Any, _Proxy]] = [(module, proxy)]
+    while pending:
+        destination, source = pending.pop()
+        children = object.__getattribute__(source, "_children").copy()
+        if not children:
+            continue
+        if type(destination) is _Proxy:
+            with object.__getattribute__(destination, "_lock"):
+                resolved = object.__getattribute__(destination, "_resolved")
+                if resolved:
+                    pending.append((resolved[0], source))
+                    continue
+                target = object.__getattribute__(destination, "_children")
+                bindings = [
+                    (child, target.setdefault(name, child))
+                    for name, child in children.items()
+                ]
+        elif issubclass(type(destination), types.ModuleType):
+            namespace = vars(destination)
+            bindings = []
+            for name, child in children.items():
+                if name in namespace:
+                    value = namespace[name]
+                elif any(name in vars(cls) for cls in type(destination).__mro__):
+                    continue
+                else:
+                    with object.__getattribute__(child, "_lock"):
+                        resolved = object.__getattribute__(child, "_resolved")
+                        value = namespace.setdefault(
+                            name, resolved[0] if resolved else child
+                        )
+                        if value is child:
+                            object.__getattribute__(child, "_namespaces").append(
+                                namespace
+                            )
+                bindings.append((child, value))
+        else:
+            continue
+        for child, value in bindings:
+            if value is not child and _module_name(child) == _module_name(value):
+                pending.append((value, child))
 
 
 # Special methods are looked up on the type, bypassing __getattribute__.
@@ -414,8 +500,23 @@ class _ImportHook:
                     object.__getattribute__(parent, "_children")[component] = child
                     parent = child
                 return root
-        with self.suspended():
-            return self._previous(name, globals, locals, fromlist, level)
+        if not state.depth or state.suspensions or level:
+            with self.suspended():
+                return self._previous(name, globals, locals, fromlist, level)
+        with self.suspended(), _preserve_pending(name):
+            result = self._previous(name, globals, locals, fromlist, level)
+        if globals is not None and not fromlist:
+            root = name.partition(".")[0]
+            existing = globals.get(root)
+            if (
+                type(existing) is _Proxy
+                and _module_name(existing) == root
+                and not object.__getattribute__(existing, "_resolved")
+                and type(result) is not _Proxy
+                and _module_name(result) == root
+            ):
+                _publish_children(result, existing)
+        return result
 
 
 _HOOK: Final = _ImportHook()

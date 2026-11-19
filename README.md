@@ -152,6 +152,13 @@ running on that thread can have its imports deferred according to its own
 module's declaration. Entering a context doesn't enable the fallback on other
 threads. Nested contexts keep it active until the outermost context exits.
 
+Keep dotted imports that bind the same package name in the same context.
+For example, if a block defers `import xml.dom` and a later `import xml.sax`
+runs outside the block, the eager import can replace the fallback proxy for
+`xml` before it has loaded `dom`. Writing `import xml.dom as dom` gives the
+deferred import its own binding if the statements need to live in different
+places.
+
 Native controls and filtering, `sys.lazy_modules`, and exception chaining back
 to the import declaration are not provided on older runtimes.
 

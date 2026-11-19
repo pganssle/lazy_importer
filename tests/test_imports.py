@@ -188,6 +188,167 @@ def test_dotted_siblings_are_available(
 
 
 @pytest.mark.parametrize(
+    "eager_import",
+    [
+        "import example_pkg",
+        "import example_pkg.sibling",
+        "import example_pkg.sibling as alias",
+    ],
+)
+def test_lazy_dotted_import_survives_eager_sibling(
+    run: Callable[[str | Callable[[], None]], None], eager_import: str
+) -> None:
+    run(
+        textwrap.dedent(f"""
+            import sys
+            from lazy_importer import lazy_importer
+            __lazy_modules__ = {{'example_pkg.child'}}
+            with lazy_importer():
+                import example_pkg.child
+                {eager_import}
+                {eager_import}
+            assert 'example_pkg' in sys.modules
+            assert 'example_pkg.child' not in sys.modules
+            assert example_pkg.child.value == 17
+        """)
+    )
+
+
+def test_nested_lazy_dotted_import_survives_eager_sibling(
+    run: Callable[[str | Callable[[], None]], None],
+) -> None:
+    run(
+        textwrap.dedent("""
+            import sys
+            from lazy_importer import lazy_importer
+            __lazy_modules__ = {'xml.etree.ElementTree'}
+            with lazy_importer():
+                import xml.etree.ElementTree
+                import xml.etree.ElementPath as path
+            assert 'xml.etree.ElementTree' not in sys.modules
+            assert path.__name__ == 'xml.etree.ElementPath'
+            assert xml.etree.ElementTree.__name__ == 'xml.etree.ElementTree'
+        """)
+    )
+
+
+def test_eager_import_does_not_transfer_from_import_binding(
+    run: Callable[[str | Callable[[], None]], None],
+) -> None:
+    run(
+        textwrap.dedent("""
+            from lazy_importer import lazy_importer
+            __lazy_modules__ = {'xml'}
+            with lazy_importer():
+                from xml import dom as xml
+                import xml.sax
+            assert xml.__name__ == 'xml'
+            assert xml.sax.__name__ == 'xml.sax'
+        """)
+    )
+
+
+def test_pending_child_does_not_shadow_module_class_attribute(
+    run: Callable[[str | Callable[[], None]], None],
+) -> None:
+    run(
+        textwrap.dedent("""
+            import types
+            import example_pkg
+            from lazy_importer import lazy_importer
+            class Package(types.ModuleType):
+                @property
+                def child(self):
+                    return 'class attribute'
+            example_pkg.__class__ = Package
+            __lazy_modules__ = {'example_pkg.child'}
+            with lazy_importer():
+                import example_pkg.child
+                import example_pkg
+            assert example_pkg.child == 'class attribute'
+        """)
+    )
+
+
+def test_pending_descendant_does_not_leak_to_unrelated_module(
+    run: Callable[[str | Callable[[], None]], None],
+) -> None:
+    run(
+        textwrap.dedent("""
+            import xml
+            import email
+            from lazy_importer import lazy_importer
+            xml.etree = email
+            __lazy_modules__ = {'xml.etree.ElementTree'}
+            with lazy_importer():
+                import xml.etree.ElementTree
+                import xml
+            assert xml.etree is email
+            assert 'ElementTree' not in vars(email)
+        """)
+    )
+
+
+def test_pending_nested_siblings_survive_repeated_eager_root_imports(
+    run: Callable[[str | Callable[[], None]], None],
+) -> None:
+    run(
+        textwrap.dedent("""
+            import sys
+            from lazy_importer import lazy_importer
+            __lazy_modules__ = {'xml.dom.minidom', 'xml.dom.pulldom'}
+            with lazy_importer():
+                import xml.dom.minidom
+                import xml
+                import xml.dom.pulldom
+                import xml
+            assert 'xml.dom.minidom' not in sys.modules
+            assert 'xml.dom.pulldom' not in sys.modules
+            assert xml.dom.pulldom.__name__ == 'xml.dom.pulldom'
+            assert xml.dom.minidom.__name__ == 'xml.dom.minidom'
+        """)
+    )
+
+
+def test_eager_descendant_preserves_pending_nested_sibling(
+    run: Callable[[str | Callable[[], None]], None],
+) -> None:
+    run(
+        textwrap.dedent("""
+            import sys
+            from lazy_importer import lazy_importer
+            __lazy_modules__ = {'xml.etree.ElementTree'}
+            with lazy_importer():
+                import xml.etree.ElementTree
+                import xml
+                import xml.etree.ElementPath
+            assert 'xml.etree.ElementTree' not in sys.modules
+            assert xml.etree.ElementPath.__name__ == 'xml.etree.ElementPath'
+            assert xml.etree.ElementTree.__name__ == 'xml.etree.ElementTree'
+        """)
+    )
+
+
+def test_failed_eager_import_preserves_pending_sibling(
+    run: Callable[[str | Callable[[], None]], None],
+) -> None:
+    run(
+        textwrap.dedent("""
+            from lazy_importer import lazy_importer
+            __lazy_modules__ = {'xml.etree.ElementTree'}
+            with lazy_importer():
+                import xml.etree.ElementTree
+                import xml
+                try:
+                    import xml.etree.missing
+                except ModuleNotFoundError as exc:
+                    assert exc.name == 'xml.etree.missing'
+            assert xml.etree.ElementTree.__name__ == 'xml.etree.ElementTree'
+        """)
+    )
+
+
+@pytest.mark.parametrize(
     "expression, expected",
     [
         ("bool(items)", "True"),
